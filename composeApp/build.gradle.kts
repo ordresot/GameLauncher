@@ -1,4 +1,5 @@
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
+import org.gradle.api.tasks.Copy
 
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
@@ -46,4 +47,14 @@ compose.desktop {
             packageVersion = "1.0.0"
         }
     }
+}
+
+val exportInstaller by tasks.registering(Copy::class) {
+    dependsOn("packageMsi")
+
+    from(file("build/compose/binaries/main/msi")) {
+        include("*.msi")
+    }
+
+    into(rootProject.layout.projectDirectory.dir("release"))
 }
