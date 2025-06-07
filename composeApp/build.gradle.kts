@@ -42,7 +42,10 @@ compose.desktop {
         mainClass = "com.ordresot.gamelauncher.MainKt"
 
         nativeDistributions {
-            targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
+            targetFormats(TargetFormat.Msi)
+            windows {
+                iconFile.set(project.file("src/desktopMain/resources/icon.ico"))
+            }
             packageName = "com.ordresot.gamelauncher"
             packageVersion = "1.0.0"
         }

@@ -1,35 +1,62 @@
 package com.ordresot.gamelauncher
 
+import androidx.compose.animation.*
+import androidx.compose.animation.core.*
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.awt.SwingPanel
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.*
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.toComposeImageBitmap
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.pointerMoveFilter
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.platform.Font
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
+import kotlinx.coroutines.delay
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import java.awt.BorderLayout
+import java.awt.datatransfer.DataFlavor
+import java.awt.dnd.*
 import java.awt.image.BufferedImage
 import java.io.File
 import javax.imageio.ImageIO
 import javax.swing.JFileChooser
+import javax.swing.JLabel
+import javax.swing.JPanel
+import javax.swing.SwingConstants
 import javax.swing.filechooser.FileSystemView
+
+const val ANIMATION_DELAY = 300L
 
 @Serializable
 data class GameInfo(
@@ -51,21 +78,43 @@ data class GameEntry(
 
 private val configFile = File(System.getProperty("user.home"), ".gamelauncher_config.json")
 
-private val LightGreenColors = lightColors(
-    primary = Color(0xFF81C784),
-    primaryVariant = Color(0xFF66BB6A),
-    secondary = Color(0xFFA5D6A7),
-    background = Color(0xFFF0FFF0),
-    surface = Color.White,
-    onPrimary = Color.White,
+private val colorTheme = darkColors(
+    primary = Color(0xFFFF00FF),
+    primaryVariant = Color(0xFF8B00FF),
+    secondary = Color(0xFF00FFFF),
+    background = Color(0xFF0D0D0D),
+    surface = Color(0xFF1A1A1A),
+    onPrimary = Color.Black,
     onSecondary = Color.Black,
-    onBackground = Color.Black,
-    onSurface = Color.Black,
+    onBackground = Color(0xFF39FF14),
+    onSurface = Color.White
+)
+
+private val customTypography = Typography(
+    h6 = TextStyle(
+        fontFamily = FontFamily(Font(resource = "fonts/orbitron.ttf")),
+        fontSize = 20.sp
+    ),
+    body2 = TextStyle(
+        fontFamily = FontFamily(Font(resource = "fonts/audiowide.ttf")),
+        fontSize = 14.sp
+    )
 )
 
 fun main() = application {
-    Window(onCloseRequest = ::exitApplication, title = "Game Launcher") {
-        MaterialTheme(colors = LightGreenColors) {
+    val windowState = rememberWindowState()
+    Window(
+        onCloseRequest = ::exitApplication,
+        title = "Game Launcher",
+        state = windowState,
+        undecorated = true
+    ) {
+        var isFullscreen by remember { mutableStateOf(true) }
+        LaunchedEffect(Unit) {
+            window.extendedState = java.awt.Frame.MAXIMIZED_BOTH
+        }
+
+        MaterialTheme(colors = colorTheme, typography = customTypography) {
             var config by remember { mutableStateOf(loadConfig()) }
             var folders by remember { mutableStateOf(config.gameFolders) }
             val gameEntries = remember { mutableStateListOf<GameEntry>() }
@@ -73,220 +122,156 @@ fun main() = application {
             gameEntries.addAll(scanGames(folders, config.gameData))
 
             var selectedGame by remember { mutableStateOf<GameEntry?>(null) }
+            var overlayVisible by remember { mutableStateOf(false) }
             var showFolderManager by remember { mutableStateOf(false) }
+            var isDragging by remember { mutableStateOf(false) }
+            var isDropEnabled by remember { mutableStateOf(false) }
 
-            fun removeFolder(path: String) {
-                folders = folders - path
-                config = config.copy(
-                    gameFolders = folders,
-                    gameData = config.gameData.filterKeys { it.startsWith(path).not() }
+            val infiniteTransition = rememberInfiniteTransition()
+
+            val animatedOffset by infiniteTransition.animateFloat(
+                initialValue = 0f,
+                targetValue = 200f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(durationMillis = 2000, easing = LinearEasing),
+                    repeatMode = RepeatMode.Reverse
                 )
-                gameEntries.clear()
-                gameEntries.addAll(scanGames(folders, config.gameData))
-                saveConfig(config)
-            }
+            )
 
-            Column(modifier = Modifier.fillMaxSize()) {
-                TopAppBar(
-                    title = { Text("Game Launcher") },
-                    actions = {
-                        IconButton(onClick = {
-                            val selectedFolder = chooseDirectory()
-                            if (selectedFolder != null && selectedFolder !in folders) {
-                                folders = folders + selectedFolder
-                                config = config.copy(gameFolders = folders)
-                                val scanned = scanGames(folders, config.gameData)
-                                gameEntries.clear()
-                                gameEntries.addAll(scanned)
-                                saveConfig(config)
-                            }
-                        }) {
-                            Icon(
-                                painter = painterResource("add.svg"),
-                                contentDescription = "Добавить папку"
-                            )
-                        }
-                        IconButton(onClick = { showFolderManager = true }) {
-                            Icon(
-                                painter = painterResource("delete.svg"),
-                                contentDescription = "Управление папками"
-                            )
-                        }
-                    }
+            val animatedStrokeWidth by infiniteTransition.animateFloat(
+                initialValue = 6f,
+                targetValue = 12f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(durationMillis = 2000, easing = LinearEasing),
+                    repeatMode = RepeatMode.Reverse
                 )
+            )
 
-                Spacer(modifier = Modifier.height(8.dp))
+            Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colors.background)) {
+                Column(modifier = Modifier.fillMaxSize()) {
+                    TopAppBar(
+                        title = { Text("Game Launcher", color = MaterialTheme.colors.onPrimary) },
+                        backgroundColor = MaterialTheme.colors.primary,
+                        actions = {
+                            IconButtonWithHover(onClick = { showFolderManager = true }, icon = "delete.svg", description = "Manage folders")
+                            IconButtonWithHover(onClick = { exitApplication() }, icon = "close.svg", description = "Exit")
+                        }
+                    )
 
-                LazyVerticalGrid(
-                    columns = GridCells.Adaptive(150.dp),
-                    modifier = Modifier.fillMaxSize().padding(16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    items(gameEntries) { game ->
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(150.dp)
-                                .clickable { selectedGame = game },
-                            elevation = 4.dp,
-                            backgroundColor = LightGreenColors.primary
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(8.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.Center
-                            ) {
-                                val bitmap = remember(game.coverPath) {
-                                    game.coverPath?.let {
-                                        loadImage(it)
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    LazyVerticalGrid(
+                        columns = GridCells.Adaptive(220.dp),
+                        modifier = Modifier.fillMaxSize().padding(horizontal = 32.dp),
+                        horizontalArrangement = Arrangement.spacedBy(32.dp)
+                    ) {
+                        items(gameEntries) { game ->
+                            Card(
+                                shape = RoundedCornerShape(16.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(220.dp)
+                                    .padding(vertical = 16.dp)
+                                    .drawBehind {
+                                        val gradient = Brush.linearGradient(
+                                            colors = listOf(
+                                                Color(0xFFFF00FF),
+                                                Color(0xFFDA70D6),
+                                                Color(0xFF00FFFF)
+                                            ),
+                                            start = Offset(animatedOffset, 0f),
+                                            end = Offset(0f, size.height + animatedOffset),
+                                            tileMode = TileMode.Mirror
+                                        )
+                                        drawRoundRect(
+                                            brush = gradient,
+                                            size = size,
+                                            cornerRadius = CornerRadius(16f, 16f),
+                                            style = Stroke(width = animatedStrokeWidth)
+                                        )
                                     }
-                                }
-                                bitmap?.let {
-                                    Image(
-                                        bitmap = it,
-                                        contentDescription = null,
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .height(80.dp)
+                                    .clickable {
+                                        selectedGame = game
+                                        overlayVisible = true
+                                        isDropEnabled = true
+                                    },
+                                backgroundColor = MaterialTheme.colors.surface,
+                                elevation = 4.dp
+                            ) {
+                                Box(modifier = Modifier.background(
+                                    Brush.verticalGradient(
+                                        colors = listOf(
+                                            Color.White.copy(alpha = 0.15f),
+                                            Color.Black.copy(alpha = 0.35f)
+                                        )
                                     )
-                                }
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(
-                                    text = game.folder.name,
-                                    textAlign = TextAlign.Center,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.fillMaxWidth()
-                                )
-                            }
-                        }
-                    }
-                }
+                                )) {
+                                    val bitmap = game.coverPath?.let { loadImage(it) }
 
-                if (showFolderManager) {
-                    Window(
-                        onCloseRequest = { showFolderManager = false },
-                        resizable = false,
-                        state = rememberWindowState(width = 300.dp, height = Dp.Unspecified)
-                    ) {
-                        Surface(elevation = 8.dp) {
-                            Column(modifier = Modifier.padding(16.dp)) {
-                                Text("Управление папками", style = MaterialTheme.typography.h6)
-                                Spacer(modifier = Modifier.height(8.dp))
-                                folders.forEach { path ->
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
-                                    ) {
-                                        Text(
-                                            text = path,
-                                            modifier = Modifier.weight(1f),
-                                            style = MaterialTheme.typography.body2
+                                    if (bitmap != null) {
+                                        Image(
+                                            bitmap = bitmap,
+                                            contentDescription = null,
+                                            contentScale = ContentScale.Crop,
+                                            modifier = Modifier.fillMaxSize()
                                         )
-                                        IconButton(onClick = { removeFolder(path) }) {
-                                            Icon(
-                                                painter = painterResource("delete.svg"),
-                                                contentDescription = "Удалить папку"
-                                            )
-                                        }
-                                    }
-                                }
-                                Spacer(modifier = Modifier.height(12.dp))
-                                Button(onClick = { showFolderManager = false }, modifier = Modifier.align(Alignment.End)) {
-                                    Text("Закрыть")
-                                }
-                            }
-                        }
-                    }
-                }
-
-                selectedGame?.let { game ->
-                    Window(
-                        onCloseRequest = { selectedGame = null },
-                        title = game.folder.name,
-                        resizable = false,
-                        state = rememberWindowState(width = 600.dp, height = Dp.Unspecified)
-                    ) {
-                        MaterialTheme(colors = LightGreenColors) {
-                            Surface(
-                                modifier = Modifier.wrapContentHeight(),
-                                elevation = 10.dp
-                            ) {
-                                Column(modifier = Modifier.padding(16.dp)) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Text(
-                                            text = game.folder.name,
-                                            style = MaterialTheme.typography.h6
-                                        )
-                                        Spacer(modifier = Modifier.weight(1f))
-                                        Button(
-                                            onClick = {
-                                                game.exePath?.let { path ->
-                                                    Runtime.getRuntime().exec(path, null, game.folder)
-                                                }
-                                            },
-                                            enabled = game.exePath != null,
-                                            modifier = Modifier.defaultMinSize(minWidth = 100.dp)
+                                    } else {
+                                        Box(
+                                            contentAlignment = Alignment.Center,
+                                            modifier = Modifier.fillMaxSize()
                                         ) {
-                                            Text("Запустить")
-                                        }
-                                    }
-
-                                    Spacer(modifier = Modifier.height(12.dp))
-                                    Divider()
-                                    Spacer(modifier = Modifier.height(12.dp))
-
-                                    Text("Файл запуска: ${game.exePath?.let { File(it).name } ?: "не выбрано"}")
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    Button(onClick = {
-                                        val exe = chooseFile("Выберите .exe", filterExt = ".exe")
-                                        if (exe != null) {
-                                            game.exePath = exe
-                                            config = config.copy(
-                                                gameData = config.gameData + (game.folder.absolutePath to GameInfo(
-                                                    exePath = exe,
-                                                    coverPath = game.coverPath
-                                                ))
+                                            Text(
+                                                text = game.folder.name,
+                                                color = MaterialTheme.colors.onSurface,
+                                                textAlign = TextAlign.Center,
+                                                fontWeight = FontWeight.Bold,
+                                                modifier = Modifier.fillMaxWidth().padding(8.dp)
                                             )
-                                            saveConfig(config)
-                                        }
-                                    }) {
-                                        Text("Выбрать exe")
-                                    }
-
-                                    Spacer(modifier = Modifier.height(8.dp))
-
-                                    Text("Обложка: ${game.coverPath?.let { File(it).name } ?: "не выбрана"}")
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    Button(onClick = {
-                                        val img = chooseFile("Выберите обложку", filterExt = ".png", allowAll = true)
-                                        if (img != null) {
-                                            game.coverPath = img
-                                            config = config.copy(
-                                                gameData = config.gameData + (game.folder.absolutePath to GameInfo(
-                                                    exePath = game.exePath,
-                                                    coverPath = img
-                                                ))
-                                            )
-                                            saveConfig(config)
-                                        }
-                                    }) {
-                                        Text("Установить обложку")
-                                    }
-
-                                    Spacer(modifier = Modifier.height(16.dp))
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.End
-                                    ) {
-                                        Button(onClick = { selectedGame = null }) {
-                                            Text("Закрыть")
                                         }
                                     }
                                 }
+                            }
+                        }
+                    }
+                }
+
+                AnimatedVisibility(visible = showFolderManager) {
+                    Box(Modifier.fillMaxSize().background(MaterialTheme.colors.background.copy(alpha = 0.8f))) {
+                        Surface(
+                            elevation = 10.dp,
+                            color = MaterialTheme.colors.surface,
+                            border = BorderStroke(2.dp, MaterialTheme.colors.primary),
+                            modifier = Modifier.align(Alignment.Center).padding(24.dp)
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Text("Manage Folders", style = MaterialTheme.typography.h6)
+                                Spacer(Modifier.height(16.dp))
+
+                                folders.forEach { folder ->
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(folder, modifier = Modifier.weight(1f), color = MaterialTheme.colors.onSurface)
+                                        IconButton(onClick = {
+                                            folders = folders - folder
+                                        }) {
+                                            Icon(
+                                                painterResource("close.svg"),
+                                                contentDescription = "Remove",
+                                                tint = MaterialTheme.colors.onPrimary
+                                            )
+                                        }
+                                    }
+                                }
+
+                                Spacer(Modifier.height(16.dp))
+                                HoverButton(onClick = {
+                                    val selectedFolder = chooseDirectory("Select folder to add")
+                                    if (selectedFolder != null && selectedFolder !in folders) {
+                                        folders = folders + selectedFolder
+                                    }
+                                }, text = "Add Folder")
+
+                                Spacer(Modifier.height(16.dp))
+                                HoverButton(onClick = { showFolderManager = false }, text = "Close")
                             }
                         }
                     }
@@ -296,18 +281,86 @@ fun main() = application {
     }
 }
 
-fun chooseDirectory(): String? {
+@OptIn(ExperimentalComposeUiApi::class)
+@Composable
+fun IconButtonWithHover(onClick: () -> Unit, icon: String, description: String) {
+    var isHovered by remember { mutableStateOf(false) }
+    val tint by animateColorAsState(
+        targetValue = if (isHovered) MaterialTheme.colors.secondary else MaterialTheme.colors.onPrimary,
+        animationSpec = tween(durationMillis = 300)
+    )
+
+    IconButton(
+        onClick = onClick,
+        modifier = Modifier.pointerMoveFilter(
+            onEnter = {
+                isHovered = true
+                false
+            },
+            onExit = {
+                isHovered = false
+                false
+            }
+        )
+    ) {
+        Icon(
+            painter = painterResource(icon),
+            contentDescription = description,
+            tint = tint
+        )
+    }
+}
+
+@OptIn(ExperimentalComposeUiApi::class)
+@Composable
+fun HoverButton(onClick: () -> Unit, enabled: Boolean = true, text: String) {
+    var isHovered by remember { mutableStateOf(false) }
+    val backgroundColor by animateColorAsState(
+        targetValue = if (isHovered) MaterialTheme.colors.secondary else MaterialTheme.colors.primary,
+        animationSpec = tween(300)
+    )
+
+    Button(
+        onClick = onClick,
+        enabled = enabled,
+        colors = ButtonDefaults.buttonColors(backgroundColor = backgroundColor),
+        modifier = Modifier
+            .defaultMinSize(minWidth = 100.dp)
+            .pointerMoveFilter(
+                onEnter = {
+                    isHovered = true
+                    false
+                },
+                onExit = {
+                    isHovered = false
+                    false
+                }
+            )
+    ) {
+        Text(text, color = Color.Black)
+    }
+}
+
+fun chooseDirectory(title: String = "Select folder"): String? {
     val chooser = JFileChooser(FileSystemView.getFileSystemView())
     chooser.fileSelectionMode = JFileChooser.DIRECTORIES_ONLY
-    chooser.dialogTitle = "Выберите папку с играми"
+    chooser.dialogTitle = title
     return if (chooser.showOpenDialog(null) == JFileChooser.APPROVE_OPTION)
         chooser.selectedFile.absolutePath else null
 }
 
-fun chooseFile(title: String, filterExt: String? = null, allowAll: Boolean = false): String? {
+fun chooseFile(
+    title: String,
+    initialDirectory: File? = null,
+    filterExt: String? = null,
+    allowAll: Boolean = false
+): String? {
     val chooser = JFileChooser(FileSystemView.getFileSystemView())
     chooser.dialogTitle = title
     chooser.fileSelectionMode = JFileChooser.FILES_ONLY
+    initialDirectory?.let {
+        chooser.currentDirectory = it
+    }
     if (!allowAll && filterExt != null) {
         chooser.fileFilter = object : javax.swing.filechooser.FileFilter() {
             override fun accept(f: File) = f.isDirectory || f.name.endsWith(filterExt, ignoreCase = true)
@@ -319,8 +372,13 @@ fun chooseFile(title: String, filterExt: String? = null, allowAll: Boolean = fal
 }
 
 fun loadImage(path: String): ImageBitmap? = runCatching {
-    val img: BufferedImage = ImageIO.read(File(path))
-    img as ImageBitmap
+    val file = File(path)
+    if (file.exists() && file.isFile) {
+        val img: BufferedImage = ImageIO.read(file)
+        img.toComposeImageBitmap()
+    } else {
+        null
+    }
 }.getOrNull()
 
 fun saveConfig(config: Config) = runCatching {
