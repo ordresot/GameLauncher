@@ -1,1 +1,1 @@
-Download release version: [Game Launcher](https://github.com/ordresot/GameLauncher/blob/master/release/com.ordresot.gamelauncher-1.0.0.msi)
+Download release version: [Game Launcher](https://github.com/ordresot/GameLauncher/blob/master/release/)

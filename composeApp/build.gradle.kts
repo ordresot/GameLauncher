@@ -46,8 +46,8 @@ compose.desktop {
             windows {
                 iconFile.set(project.file("src/desktopMain/resources/icon.ico"))
             }
-            packageName = "com.ordresot.gamelauncher"
-            packageVersion = "1.0.0"
+            packageName = "Game Launcher"
+            packageVersion = "2.0.0"
         }
     }
 }
