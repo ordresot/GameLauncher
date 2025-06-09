@@ -1,6 +1,8 @@
 package com.ordresot.gamelauncher.domain.api.repository
 
+import java.io.File
+
 interface FileRepository {
-    fun chooseDirectory(): String?
-    fun chooseFile(vararg extensions: String, allowAll: Boolean = false): String?
+    fun pickDirectory(): String?
+    fun pickFile(extension: String?, allowAll: Boolean, initialDirectory: File? = null): String?
 }

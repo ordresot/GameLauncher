@@ -7,6 +7,6 @@ class PickDirectoryUseCaseImpl(
     private val repository: FileRepository
 ) : PickDirectoryUseCase {
     override fun invoke(): String? {
-        return repository.chooseDirectory()
+        return repository.pickDirectory()
     }
 }

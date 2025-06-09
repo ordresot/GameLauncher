@@ -1,5 +1,11 @@
 package com.ordresot.gamelauncher.domain.api.usecase
 
-interface PickFileUseCase {
-    operator fun invoke(vararg extensions: String, allowAll: Boolean = false): String?
+import java.io.File
+
+fun interface PickFileUseCase {
+    operator fun invoke(
+        extension: String?,
+        allowAll: Boolean,
+        initialDirectory: File?
+    ): String?
 }

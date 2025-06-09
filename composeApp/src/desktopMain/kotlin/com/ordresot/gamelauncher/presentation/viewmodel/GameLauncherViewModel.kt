@@ -86,21 +86,15 @@ class GameLauncherViewModel(
     }
 
     fun selectExe() {
-        val exePath = pickFileUseCase(".exe")
+        val initialDir = _uiState.value.selectedGame?.folder
+        val exePath = pickFileUseCase(
+            extension = "exe",
+            allowAll = false,
+            initialDirectory = initialDir
+        )
         exePath?.let { path ->
             _uiState.value.selectedGame?.let { game ->
                 val updatedGame = game.copy(exePath = path)
-                updateGameInfo(updatedGame)
-                _uiState.update { it.copy(selectedGame = updatedGame) }
-            }
-        }
-    }
-
-    fun selectCover() {
-        val imagePath = pickFileUseCase(".png", allowAll = true)
-        imagePath?.let { path ->
-            _uiState.value.selectedGame?.let { game ->
-                val updatedGame = game.copy(coverPath = path)
                 updateGameInfo(updatedGame)
                 _uiState.update { it.copy(selectedGame = updatedGame) }
             }
@@ -124,6 +118,7 @@ class GameLauncherViewModel(
             gameData = config.gameData + (game.folder.absolutePath to game.toGameInfo())
         )
         saveConfig()
+        scanGames()
     }
 
     private fun saveConfig() {

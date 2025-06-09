@@ -1,16 +1,16 @@
 package com.ordresot.gamelauncher.data.repository
 
 import com.ordresot.gamelauncher.domain.api.repository.FileRepository
+import java.io.File
 import javax.swing.JFileChooser
 import javax.swing.filechooser.FileNameExtensionFilter
 import javax.swing.filechooser.FileSystemView
 
 class FileRepositoryImpl : FileRepository {
-
-    override fun chooseDirectory(): String? {
-        val chooser = JFileChooser(FileSystemView.getFileSystemView())
+    override fun pickDirectory(): String? {
+        val chooser = JFileChooser()
         chooser.fileSelectionMode = JFileChooser.DIRECTORIES_ONLY
-        chooser.dialogTitle = "Select folder"
+        chooser.dialogTitle = "Select Folder"
         return if (chooser.showOpenDialog(null) == JFileChooser.APPROVE_OPTION) {
             chooser.selectedFile.absolutePath
         } else {
@@ -18,16 +18,20 @@ class FileRepositoryImpl : FileRepository {
         }
     }
 
-    override fun chooseFile(vararg extensions: String, allowAll: Boolean): String? {
-        val chooser = JFileChooser(FileSystemView.getFileSystemView())
+    override fun pickFile(extension: String?, allowAll: Boolean, initialDirectory: File?): String? {
+        val chooser = JFileChooser()
         chooser.fileSelectionMode = JFileChooser.FILES_ONLY
-        chooser.dialogTitle = "Select file"
-        if (!allowAll && extensions.isNotEmpty()) {
-            chooser.fileFilter = FileNameExtensionFilter(
-                extensions.joinToString(", ") { "*.$it" },
-                *extensions
-            )
+        initialDirectory?.let { chooser.currentDirectory = it }
+        extension?.let {
+            chooser.fileFilter = object : javax.swing.filechooser.FileFilter() {
+                override fun accept(f: File) = f.isDirectory || f.name.endsWith(extension, ignoreCase = true)
+                override fun getDescription() = "*$extension"
+            }
         }
+        if (!allowAll && extension != null) {
+            chooser.setAcceptAllFileFilterUsed(false)
+        }
+        chooser.dialogTitle = "Select File"
         return if (chooser.showOpenDialog(null) == JFileChooser.APPROVE_OPTION) {
             chooser.selectedFile.absolutePath
         } else {

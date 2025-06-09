@@ -43,11 +43,12 @@ compose.desktop {
 
         nativeDistributions {
             targetFormats(TargetFormat.Msi)
+            packageName = "Game Launcher"
+            packageVersion = "2.1.0"
+
             windows {
                 iconFile.set(project.file("src/desktopMain/resources/icon.ico"))
             }
-            packageName = "Game Launcher"
-            packageVersion = "2.0.0"
         }
     }
 }

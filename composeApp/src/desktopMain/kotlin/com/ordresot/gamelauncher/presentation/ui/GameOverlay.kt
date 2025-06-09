@@ -32,6 +32,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.ordresot.gamelauncher.domain.model.GameEntry
 import com.ordresot.gamelauncher.presentation.ui.components.HoverButton
+import com.ordresot.gamelauncher.presentation.ui.theme.DarkColorPalette
+import com.ordresot.gamelauncher.presentation.ui.utils.toAwtColor
+import com.ordresot.gamelauncher.presentation.ui.utils.toAwtFont
 import kotlinx.coroutines.delay
 import java.awt.BorderLayout
 import java.awt.datatransfer.DataFlavor
@@ -50,7 +53,6 @@ fun GameOverlay(
     game: GameEntry,
     onLaunch: () -> Unit,
     onSelectExe: () -> Unit,
-    onSelectCover: () -> Unit,
     onClose: () -> Unit,
     isDragging: Boolean,
     isDropEnabled: Boolean,
@@ -60,6 +62,9 @@ fun GameOverlay(
     overlayVisible: Boolean
 ) {
     var showDragPanel by remember { mutableStateOf(false) }
+    val backgroundColor = DarkColorPalette.onBackground.toAwtColor()
+    val primaryColor = DarkColorPalette.primary.toAwtColor()
+    val customFont = MaterialTheme.typography.body2.toAwtFont()
 
     LaunchedEffect(overlayVisible) {
         if (overlayVisible) {
@@ -138,14 +143,23 @@ fun GameOverlay(
                         .align(Alignment.Start)
                         .border(2.dp, if (isDragging) MaterialTheme.colors.primary else Color.Gray)
                         .padding(8.dp),
-                    color = MaterialTheme.colors.surface
+                    color = Color.Transparent
                 ) {
                     if (showDragPanel) {
                         SwingPanel(
-                            modifier = Modifier.fillMaxSize(),
+                            modifier = Modifier.fillMaxSize().background(DarkColorPalette.background),
                             factory = {
                                 JPanel(BorderLayout()).apply {
+                                    setUI(null)
+                                    isOpaque = true
+                                    background = backgroundColor
+
                                     val label = JLabel("Drop cover image here", SwingConstants.CENTER)
+                                    label.foreground = primaryColor
+                                    label.background = backgroundColor
+                                    label.isOpaque = true
+                                    label.font = customFont
+
                                     add(label)
                                     dropTarget = object : DropTarget() {
                                         override fun dragEnter(evt: DropTargetDragEvent) {

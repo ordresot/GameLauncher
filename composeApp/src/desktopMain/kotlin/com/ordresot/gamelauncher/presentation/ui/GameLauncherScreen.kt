@@ -100,7 +100,6 @@ fun GameLauncherScreen(viewModel: GameLauncherViewModel) {
                             game = game,
                             onLaunch = { viewModel.launchGame() },
                             onSelectExe = { viewModel.selectExe() },
-                            onSelectCover = { viewModel.selectCover() },
                             onClose = { viewModel.deselectGame() },
                             isDragging = uiState.isDragging,
                             isDropEnabled = uiState.isDropEnabled,
